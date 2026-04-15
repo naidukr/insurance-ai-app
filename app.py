@@ -12,6 +12,12 @@ import plotly.graph_objects as go
 from pathlib import Path
 import json
 
+# Import monitoring dashboard
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'monitoring-dashboard'))
+from monitoring_dashboard import render_monitoring_dashboard
+
 # ==================== Configuration ====================
 API_URL = "http://localhost:8000"
 
@@ -79,7 +85,8 @@ with st.sidebar:
             "Extract Document",
             "Upload Record",
             "Chat Support",
-            "Analytics"
+            "Analytics",
+            "Monitoring Dashboard"
         ]
     )
     
@@ -752,6 +759,11 @@ elif page == "Analytics":
             'Claims': [280, 310, 295, 320],
             'Approvals': [215, 238, 226, 245]
         }).set_index('Week'))
+
+# ==================== Monitoring Dashboard Page ====================
+
+elif page == "Monitoring Dashboard":
+    render_monitoring_dashboard(st.session_state.api_url)
 
 # ==================== Footer ====================
 
