@@ -23,6 +23,9 @@ except ImportError:
 # Import RAG system
 from rag import get_rag_system, init_rag_system
 
+# Import conversation memory
+from memory import init_memory, get_memory
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +50,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize memory and RAG on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize memory and RAG systems on startup"""
+    logger.info("🚀 Starting Insurance AI Application...")
+    init_memory()  # Initialize Redis connection
+    logger.info("✅ Memory system initialized")
 
 # ==================== Data Models ====================
 
@@ -296,32 +307,61 @@ async def rag_search(search_data: dict):
 async def chat_with_ai(message: ChatMessage):
     """
     Chat with RAG-powered AI - Uses FREE Groq LLM
+    Maintains conversation history in Redis for context-aware responses
     """
     try:
         logger.info(f"Chat message: {message.message}")
         
+        # Get memory and RAG systems
+        memory = get_memory()
         rag_system = get_rag_system()
+        
+        # Generate conversation ID if not provided
+        if not message.conversation_id:
+            message.conversation_id = f"conv-{datetime.now().isoformat()}"
         
         if not rag_system or not rag_system.llm:
             # Fallback if RAG not initialized
-            return {
-                "conversation_id": message.conversation_id or f"conv-{datetime.now().isoformat()}",
+            response = {
+                "conversation_id": message.conversation_id,
                 "user_message": message.message,
                 "ai_response": "RAG system not initialized. Please ensure Groq API key is configured.",
                 "confidence": 0.0,
                 "timestamp": datetime.now().isoformat()
             }
+            # Still save to memory
+            memory.save_message(message.conversation_id, "user", message.message)
+            return response
+        
+        # Save user message to memory
+        memory.save_message(message.conversation_id, "user", message.message)
+        
+        # Get recent conversation context
+        context = memory.get_recent_context(message.conversation_id, max_messages=4)
+        
+        # Build prompt with conversation history
+        if context:
+            full_query = f"Recent conversation:\n{context}\n\nNew question: {message.message}"
+        else:
+            full_query = message.message
         
         # Use RAG to answer the question
-        result = rag_system.retrieve_and_answer(message.message)
+        result = rag_system.retrieve_and_answer(full_query)
+        ai_response = result.get("answer", "Unable to generate response")
+        
+        # Save AI response to memory
+        memory.save_message(message.conversation_id, "assistant", ai_response, {
+            "sources": result.get("sources", [])
+        })
         
         return {
-            "conversation_id": message.conversation_id or f"conv-{datetime.now().isoformat()}",
+            "conversation_id": message.conversation_id,
             "user_message": message.message,
-            "ai_response": result.get("answer", "Unable to generate response"),
+            "ai_response": ai_response,
             "sources": result.get("sources", []),
             "confidence": 0.85,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "context_from_history": bool(context)
         }
     except Exception as e:
         logger.error(f"Error in chat: {str(e)}")
@@ -331,13 +371,20 @@ async def chat_with_ai(message: ChatMessage):
 async def chat_with_record(message: ChatMessage):
     """
     Chat with a specific record context - Uses FREE Groq LLM
+    Maintains conversation history in Redis
     """
     try:
         logger.info(f"Chat with record: {message.message}")
         
+        # Get memory and RAG systems
+        memory = get_memory()
         rag_system = get_rag_system()
         
+        if not message.conversation_id:
+            message.conversation_id = f"conv-{datetime.now().isoformat()}"
+        
         if not rag_system or not rag_system.llm:
+            memory.save_message(message.conversation_id, "user", message.message)
             return {
                 "conversation_id": message.conversation_id,
                 "user_message": message.message,
@@ -346,21 +393,93 @@ async def chat_with_record(message: ChatMessage):
                 "timestamp": datetime.now().isoformat()
             }
         
-        # Use RAG system to retrieve and answer
-        result = rag_system.retrieve_and_answer(message.message)
+        # Save user message to memory
+        memory.save_message(message.conversation_id, "user", message.message)
+        
+        # Get conversation context
+        context = memory.get_recent_context(message.conversation_id, max_messages=4)
+        
+        # Build query with context
+        full_query = f"Additional context: {message.context}\n\n" if message.context else ""
+        if context:
+            full_query += f"Recent conversation:\n{context}\n\nNew question: {message.message}"
+        else:
+            full_query += message.message
+        
+        # Retrieve and answer
+        # Retrieve and answer
+        result = rag_system.retrieve_and_answer(full_query)
+        ai_response = result.get("answer", "Unable to generate response")
+        
+        # Save to memory
+        memory.save_message(message.conversation_id, "assistant", ai_response, {
+            "sources": result.get("sources", [])
+        })
         
         return {
-            "conversation_id": message.conversation_id or f"conv-{datetime.now().isoformat()}",
+            "conversation_id": message.conversation_id,
             "user_message": message.message,
-            "ai_response": result.get("answer", "Unable to generate response"),
+            "ai_response": ai_response,
             "sources": result.get("sources", []),
             "record_used": message.context,
             "confidence": 0.85,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "context_from_history": bool(context)
         }
     except Exception as e:
         logger.error(f"Error in chat-with-record: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Conversation Memory Management ====================
+
+@app.get("/api/memory/health")
+async def memory_health_check():
+    """Check memory system health"""
+    memory = get_memory()
+    health = memory.health_check()
+    return {
+        "status": "ok",
+        "memory": health,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/conversations/{conversation_id}/history")
+async def get_conversation_history(conversation_id: str, limit: int = 20):
+    """Get full conversation history for a conversation ID"""
+    memory = get_memory()
+    messages = memory.get_conversation(conversation_id, max_messages=limit)
+    summary = memory.get_conversation_summary(conversation_id)
+    
+    return {
+        "conversation_id": conversation_id,
+        "messages": messages,
+        "summary": summary,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/conversations/{conversation_id}/summary")
+async def get_conversation_summary(conversation_id: str):
+    """Get metadata summary of a conversation"""
+    memory = get_memory()
+    summary = memory.get_conversation_summary(conversation_id)
+    
+    return {
+        "conversation_id": conversation_id,
+        "summary": summary,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.delete("/api/conversations/{conversation_id}")
+async def clear_conversation(conversation_id: str):
+    """Clear conversation history"""
+    memory = get_memory()
+    success = memory.clear_conversation(conversation_id)
+    
+    return {
+        "conversation_id": conversation_id,
+        "cleared": success,
+        "timestamp": datetime.now().isoformat()
+    }
 
 # ==================== Analytics ====================
 
