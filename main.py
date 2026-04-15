@@ -26,6 +26,17 @@ from rag import get_rag_system, init_rag_system
 # Import conversation memory
 from memory import init_memory, get_memory
 
+# Import observability
+from observability import (
+    init_observability,
+    get_observability_status,
+    trace_rag_chain,
+    trace_llm_call,
+    trace_operation,
+    get_metrics,
+    log_langsmith_event
+)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,10 +65,19 @@ app.add_middleware(
 # Initialize memory and RAG on startup
 @app.on_event("startup")
 async def startup_event():
-    """Initialize memory and RAG systems on startup"""
+    """Initialize memory, RAG, and observability systems on startup"""
     logger.info("🚀 Starting Insurance AI Application...")
-    init_memory()  # Initialize Redis connection
+    
+    # Initialize observability (LangSmith + Azure App Insights)
+    obs_config = init_observability()
+    logger.info(f"📊 Observability initialized: {obs_config}")
+    
+    # Initialize memory system (Redis or in-memory fallback)
+    init_memory()
     logger.info("✅ Memory system initialized")
+    
+    # Initialize RAG system
+    logger.info("✅ All systems ready!")
 
 # ==================== Data Models ====================
 
@@ -100,11 +120,16 @@ class ChatMessage(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with observability status"""
+    memory = get_memory()
+    obs_status = get_observability_status()
+    
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "memory": memory.health_check() if memory else {"status": "unavailable"},
+        **obs_status
     }
 
 # ==================== Claims Processing ====================
@@ -308,63 +333,90 @@ async def chat_with_ai(message: ChatMessage):
     """
     Chat with RAG-powered AI - Uses FREE Groq LLM
     Maintains conversation history in Redis for context-aware responses
+    Includes LangSmith tracing and observability
     """
     try:
-        logger.info(f"Chat message: {message.message}")
+        # Track request in metrics
+        get_metrics().record_chat_request()
         
-        # Get memory and RAG systems
-        memory = get_memory()
-        rag_system = get_rag_system()
-        
-        # Generate conversation ID if not provided
-        if not message.conversation_id:
-            message.conversation_id = f"conv-{datetime.now().isoformat()}"
-        
-        if not rag_system or not rag_system.llm:
-            # Fallback if RAG not initialized
+        # Trace operation
+        with trace_operation("chat_request", {"message_length": len(message.message)}):
+            logger.info(f"Chat message: {message.message}")
+            
+            # Get memory and RAG systems
+            memory = get_memory()
+            rag_system = get_rag_system()
+            
+            # Generate conversation ID if not provided
+            if not message.conversation_id:
+                message.conversation_id = f"conv-{datetime.now().isoformat()}"
+            
+            if not rag_system or not rag_system.llm:
+                # Fallback if RAG not initialized
+                response = {
+                    "conversation_id": message.conversation_id,
+                    "user_message": message.message,
+                    "ai_response": "RAG system not initialized. Please ensure Groq API key is configured.",
+                    "confidence": 0.0,
+                    "timestamp": datetime.now().isoformat()
+                }
+                # Still save to memory
+                memory.save_message(message.conversation_id, "user", message.message)
+                log_langsmith_event(
+                    "chat_failed_no_rag",
+                    inputs={"message": message.message},
+                    metadata={"conversation_id": message.conversation_id}
+                )
+                return response
+            
+            # Save user message to memory
+            memory.save_message(message.conversation_id, "user", message.message)
+            
+            # Get recent conversation context
+            context = memory.get_recent_context(message.conversation_id, max_messages=4)
+            
+            # Build prompt with conversation history
+            if context:
+                full_query = f"Recent conversation:\n{context}\n\nNew question: {message.message}"
+            else:
+                full_query = message.message
+            
+            # Use RAG to answer the question
+            result = rag_system.retrieve_and_answer(full_query)
+            ai_response = result.get("answer", "Unable to generate response")
+            
+            # Save AI response to memory
+            memory.save_message(message.conversation_id, "assistant", ai_response, {
+                "sources": result.get("sources", [])
+            })
+            
             response = {
                 "conversation_id": message.conversation_id,
                 "user_message": message.message,
-                "ai_response": "RAG system not initialized. Please ensure Groq API key is configured.",
-                "confidence": 0.0,
-                "timestamp": datetime.now().isoformat()
+                "ai_response": ai_response,
+                "sources": result.get("sources", []),
+                "confidence": 0.85,
+                "timestamp": datetime.now().isoformat(),
+                "context_from_history": bool(context)
             }
-            # Still save to memory
-            memory.save_message(message.conversation_id, "user", message.message)
+            
+            # Log to LangSmith
+            log_langsmith_event(
+                "chat_completed",
+                inputs={"message": message.message},
+                outputs={"response": ai_response[:200]},
+                metadata={"conversation_id": message.conversation_id, "has_context": bool(context)}
+            )
+            
             return response
-        
-        # Save user message to memory
-        memory.save_message(message.conversation_id, "user", message.message)
-        
-        # Get recent conversation context
-        context = memory.get_recent_context(message.conversation_id, max_messages=4)
-        
-        # Build prompt with conversation history
-        if context:
-            full_query = f"Recent conversation:\n{context}\n\nNew question: {message.message}"
-        else:
-            full_query = message.message
-        
-        # Use RAG to answer the question
-        result = rag_system.retrieve_and_answer(full_query)
-        ai_response = result.get("answer", "Unable to generate response")
-        
-        # Save AI response to memory
-        memory.save_message(message.conversation_id, "assistant", ai_response, {
-            "sources": result.get("sources", [])
-        })
-        
-        return {
-            "conversation_id": message.conversation_id,
-            "user_message": message.message,
-            "ai_response": ai_response,
-            "sources": result.get("sources", []),
-            "confidence": 0.85,
-            "timestamp": datetime.now().isoformat(),
-            "context_from_history": bool(context)
-        }
     except Exception as e:
         logger.error(f"Error in chat: {str(e)}")
+        log_langsmith_event(
+            "chat_error",
+            inputs={"message": message.message},
+            outputs={"error": str(e)},
+            metadata={"exception": type(e).__name__}
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat-with-record")
