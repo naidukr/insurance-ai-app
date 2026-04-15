@@ -1,0 +1,585 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Insurance AI Application Monitoring Dashboard\n\nMonitor your AI-powered insurance processing application with comprehensive telemetry from Azure Application Insights and LangSmith.\n\n> **Last updated:** {TimeBrush}\n> **Application Version:** 1.0.0"
+      },
+      "name": "dashboard-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "8b4c5d6e-7f8g-9h0i-1j2k-3l4m5n6o7p8q",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 3600000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 300000
+                },
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "9c5d6e7f-8g9h-0i1j-2k3l-4m5n6o7p8q9r",
+            "version": "KqlParameterItem/1.0",
+            "name": "ApplicationInsights",
+            "label": "Application Insights Resource",
+            "type": 5,
+            "isRequired": true,
+            "query": "resources\r\n| where type == \"microsoft.insights/components\"\r\n| project id, name\r\n| order by name asc",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "a1b2c3d4-e5f6-g7h8-i9j0-k1l2m3n4o5p6",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "b2c3d4e5-f6g7-h8i9-j0k1-l2m3n4o5p6q7",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Performance",
+            "subTarget": "performance",
+            "style": "link"
+          },
+          {
+            "id": "c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Errors & Reliability",
+            "subTarget": "errors",
+            "style": "link"
+          },
+          {
+            "id": "d4e5f6g7-h8i9-j0k1-l2m3-n4o5p6q7r8s9",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Usage Analytics",
+            "subTarget": "usage",
+            "style": "link"
+          },
+          {
+            "id": "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Infrastructure",
+            "subTarget": "infrastructure",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppRequests\r\n| where TimeGenerated {TimeRange}\r\n| summarize \r\n    TotalRequests = count(),\r\n    FailedRequests = countif(ResultCode != \"200\"),\r\n    AvgResponseTime = avg(DurationMs),\r\n    P95ResponseTime = percentiles(DurationMs, 95)\r\n| project \r\n    TotalRequests,\r\n    FailedRequests,\r\n    ErrorRate = round(FailedRequests * 100.0 / TotalRequests, 2),\r\n    AvgResponseTime = round(AvgResponseTime, 2),\r\n    P95ResponseTime = round(P95ResponseTime, 2)",
+              "size": 4,
+              "title": "Application Health Summary",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "TotalRequests",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "TotalRequests",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "ErrorRate",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "health-summary"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppMetrics\r\n| where TimeGenerated {TimeRange}\r\n| where Name startswith \"insurance_ai.\"\r\n| summarize Value = avg(Value) by Name, bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Custom Metrics Overview",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "custom-metrics"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppRequests\r\n| where TimeGenerated {TimeRange}\r\n| summarize count() by bin(TimeGenerated, 1m), Name\r\n| order by TimeGenerated asc\r\n| render timechart",
+              "size": 0,
+              "title": "Request Volume Over Time",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "request-volume"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      },
+      "name": "overview-group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppRequests\r\n| where TimeGenerated {TimeRange}\r\n| summarize percentiles(DurationMs, 50, 95, 99) by bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Response Time Percentiles",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "response-time-percentiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppMetrics\r\n| where TimeGenerated {TimeRange}\r\n| where Name == \"insurance_ai.rag.latency_ms\"\r\n| summarize avg(Value), percentiles(Value, 95) by bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "RAG Query Latency",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "rag-latency"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppMetrics\r\n| where TimeGenerated {TimeRange}\r\n| where Name == \"insurance_ai.chat.requests\"\r\n| summarize count() by bin(TimeGenerated, 1m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Chat Request Throughput",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "barchart"
+            },
+            "name": "chat-throughput"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "performance"
+      },
+      "name": "performance-group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppRequests\r\n| where TimeGenerated {TimeRange}\r\n| where ResultCode != \"200\"\r\n| summarize count() by ResultCode, bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "HTTP Error Codes Over Time",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "error-codes"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppExceptions\r\n| where TimeGenerated {TimeRange}\r\n| summarize count() by Type, bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Application Exceptions",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "exceptions"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppExceptions\r\n| where TimeGenerated {TimeRange}\r\n| project TimeGenerated, Type, Message, StackTrace\r\n| order by TimeGenerated desc\r\n| take 50",
+              "size": 0,
+              "title": "Recent Exceptions",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "table"
+            },
+            "name": "recent-exceptions"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "errors"
+      },
+      "name": "errors-group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppMetrics\r\n| where TimeGenerated {TimeRange}\r\n| where Name == \"insurance_ai.chat.requests\"\r\n| summarize TotalChats = sum(Value) by bin(TimeGenerated, 1h)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Chat Usage Trends",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "chat-usage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppMetrics\r\n| where TimeGenerated {TimeRange}\r\n| where Name == \"insurance_ai.documents.uploaded\"\r\n| summarize TotalUploads = sum(Value) by bin(TimeGenerated, 1h)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Document Upload Trends",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "barchart"
+            },
+            "name": "document-uploads"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppRequests\r\n| where TimeGenerated {TimeRange}\r\n| where Name contains \"/api/chat\"\r\n| summarize count() by UserId, bin(TimeGenerated, 1h)\r\n| where UserId != \"\"\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "User Activity",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "user-activity"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "usage"
+      },
+      "name": "usage-group"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppDependencies\r\n| where TimeGenerated {TimeRange}\r\n| where Target contains \"redis\"\r\n| summarize \r\n    TotalCalls = count(),\r\n    FailedCalls = countif(Success == false),\r\n    AvgDuration = avg(DurationMs)\r\n| project \r\n    TotalCalls,\r\n    FailedCalls,\r\n    SuccessRate = round((TotalCalls - FailedCalls) * 100.0 / TotalCalls, 2),\r\n    AvgDuration = round(AvgDuration, 2)",
+              "size": 4,
+              "title": "Redis Health Summary",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "TotalCalls",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "SuccessRate",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "AvgDuration",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 23,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                },
+                "showBorder": false
+              }
+            },
+            "name": "redis-health"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppDependencies\r\n| where TimeGenerated {TimeRange}\r\n| where Target contains \"redis\"\r\n| summarize count() by Success, bin(TimeGenerated, 5m)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Redis Connection Status",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "linechart"
+            },
+            "name": "redis-connections"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AppTraces\r\n| where TimeGenerated {TimeRange}\r\n| where Message contains \"Redis\" or Message contains \"memory\"\r\n| project TimeGenerated, Message, SeverityLevel\r\n| order by TimeGenerated desc\r\n| take 100",
+              "size": 0,
+              "title": "Memory System Logs",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.insights/components",
+              "crossComponentResources": [
+                "{ApplicationInsights}"
+              ],
+              "visualization": "table"
+            },
+            "name": "memory-logs"
+          }
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "infrastructure"
+      },
+      "name": "infrastructure-group"
+    }
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
